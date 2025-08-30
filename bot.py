@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import logging
+import logging, re
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 
@@ -11,6 +11,19 @@ REMOVE_TEXT    = "✨ Powered By : @ParishramZone"
 # ----------------------------------------
 
 logging.basicConfig(level=logging.INFO)
+
+def clean_text_keep_links(text: str, remove_text: str):
+    """Remove unwanted text + formatting, keep only raw links."""
+    if not text:
+        return text
+    # remove unwanted promo line
+    text = text.replace(remove_text, "").strip()
+    # regex: extract links
+    links = re.findall(r'(https?://\S+|t\.me/\S+)', text)
+    # remove all formatting chars (Telegram entities won’t be used)
+    plain_text = re.sub(r'\*|_|~|`', '', text)  # remove markdown formatting
+    # (optional) keep links inside text, no markup
+    return plain_text
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
@@ -26,52 +39,31 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         for msg_id in range(start_id, end_id + 1):
             try:
-                # fetch message
+                # get original msg
                 msg = await context.bot.forward_message(
-                    chat_id=update.effective_chat.id,   # temp forward to user
+                    chat_id=update.effective_chat.id,
                     from_chat_id=BACKUP_CHANNEL,
                     message_id=msg_id
                 )
                 await msg.delete()
 
-                # ✅ check message type
                 if msg.text:
-                    cleaned_text = msg.text.replace(REMOVE_TEXT, "").strip()
-                    await context.bot.send_message(
-                        MAIN_CHANNEL,
-                        text=cleaned_text,
-                        entities=msg.entities  # keep formatting + links
-                    )
+                    cleaned = clean_text_keep_links(msg.text, REMOVE_TEXT)
+                    await context.bot.send_message(MAIN_CHANNEL, text=cleaned)
 
                 elif msg.caption:
-                    cleaned_caption = msg.caption.replace(REMOVE_TEXT, "").strip()
+                    cleaned = clean_text_keep_links(msg.caption, REMOVE_TEXT)
                     if msg.photo:
-                        await context.bot.send_photo(
-                            MAIN_CHANNEL, photo=msg.photo[-1].file_id,
-                            caption=cleaned_caption,
-                            caption_entities=msg.caption_entities  # keep formatting + links
-                        )
+                        await context.bot.send_photo(MAIN_CHANNEL, msg.photo[-1].file_id, caption=cleaned)
                     elif msg.video:
-                        await context.bot.send_video(
-                            MAIN_CHANNEL, video=msg.video.file_id,
-                            caption=cleaned_caption,
-                            caption_entities=msg.caption_entities
-                        )
+                        await context.bot.send_video(MAIN_CHANNEL, msg.video.file_id, caption=cleaned)
                     elif msg.document:
-                        await context.bot.send_document(
-                            MAIN_CHANNEL, document=msg.document.file_id,
-                            caption=cleaned_caption,
-                            caption_entities=msg.caption_entities
-                        )
+                        await context.bot.send_document(MAIN_CHANNEL, msg.document.file_id, caption=cleaned)
                     else:
-                        await context.bot.send_message(
-                            MAIN_CHANNEL,
-                            text=cleaned_caption,
-                            entities=msg.caption_entities
-                        )
+                        await context.bot.send_message(MAIN_CHANNEL, text=cleaned)
 
                 else:
-                    # fallback normal copy
+                    # fallback if no text/caption
                     await context.bot.copy_message(MAIN_CHANNEL, BACKUP_CHANNEL, msg_id)
 
             except Exception as e:
