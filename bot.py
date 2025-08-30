@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 import logging
-from telegram import Update
+from telegram import Update, MessageEntity
 from telegram.ext import Application, CommandHandler, ContextTypes
 
 # ---------------- CONFIG ----------------
@@ -12,25 +12,45 @@ REMOVE_TEXT    = "✨ Powered By : @ParishramZone"
 
 logging.basicConfig(level=logging.INFO)
 
+
 def clean_text_and_entities(msg, remove_text):
-    """Remove unwanted text, drop formatting but keep links only."""
+    """Remove unwanted text, adjust entity offsets, keep all links."""
     text = msg.text or msg.caption
     entities = msg.entities or msg.caption_entities
 
     if not text:
         return None, None
 
-    # remove unwanted promo text
-    text = text.replace(remove_text, "").strip()
+    # --- step 1: remove unwanted text ---
+    remove_start = text.find(remove_text)
+    remove_end = remove_start + len(remove_text) if remove_start != -1 else -1
 
+    new_text = text.replace(remove_text, "").strip()
+
+    # --- step 2: adjust entity offsets ---
     safe_entities = []
     if entities:
         for e in entities:
-            if e.type in ["url", "text_link"]:  # keep only links
-                if e.offset + e.length <= len(text):
-                    safe_entities.append(e)
+            if e.type in ["url", "text_link"]:  # keep all links
+                offset = e.offset
+                length = e.length
 
-    return text, safe_entities
+                # shift if removal before entity
+                if remove_start != -1 and offset > remove_start:
+                    offset -= len(remove_text)
+
+                # skip broken entities
+                if offset + length <= len(new_text):
+                    safe_entities.append(
+                        MessageEntity(
+                            type=e.type,
+                            offset=offset,
+                            length=length,
+                            url=e.url
+                        )
+                    )
+
+    return new_text, safe_entities
 
 
 # /start 1-100
@@ -48,7 +68,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         for msg_id in range(start_id, end_id + 1):
             try:
-                # first fetch original msg (forward temp to user)
+                # temporary forward (to read original msg fully)
                 fwd = await context.bot.forward_message(
                     chat_id=update.effective_chat.id,
                     from_chat_id=BACKUP_CHANNEL,
@@ -95,10 +115,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         )
 
                 else:
-                    # fallback copy
                     await context.bot.copy_message(MAIN_CHANNEL, BACKUP_CHANNEL, msg_id)
 
-                # delete temp forwarded message
+                # delete temp forward
                 await fwd.delete()
 
             except Exception as e:
