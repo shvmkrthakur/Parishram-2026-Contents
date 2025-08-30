@@ -5,7 +5,7 @@ from telegram.ext import Application, CommandHandler, ContextTypes
 
 # ---------------- CONFIG ----------------
 BOT_TOKEN = "7947639550:AAHEtB3KRztXvgDfXM-r3-mWRCA8Vn-G5_g"
-BACKUP_CHANNEL = "gdndndm"
+BACKUP_CHANNEL = "@gdndndm"
 MAIN_CHANNEL = -1002371985459
 # ----------------------------------------
 
