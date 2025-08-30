@@ -12,7 +12,6 @@ REMOVE_TEXT    = "✨ Powered By : @ParishramZone"
 
 logging.basicConfig(level=logging.INFO)
 
-# /start 1-100
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text("Usage: /start <from>-<to>\nExample: /start 1-100")
@@ -27,49 +26,43 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         for msg_id in range(start_id, end_id + 1):
             try:
-                # fetch original message
-                original = await context.bot.forward_message(
-                    chat_id=update.effective_chat.id,
+                # fetch the original message
+                msg = await context.bot.forward_message(
+                    chat_id=update.effective_chat.id,   # temp forward to user (self)
                     from_chat_id=BACKUP_CHANNEL,
                     message_id=msg_id
                 )
-                await original.delete()  # delete test forward
+                await msg.delete()  # delete temp forward
 
-                msg = await context.bot.get_chat(BACKUP_CHANNEL)
-            except:
-                # try with get_messages and resend clean
-                try:
-                    original = await context.bot.get_chat(BACKUP_CHANNEL)
-                except Exception as e:
-                    await update.message.reply_text(f"❌ Error on {msg_id}: {e}")
-                    continue
+                # now fetch real message
+                original = await context.bot.get_chat(BACKUP_CHANNEL)
+            except Exception as e:
+                await update.message.reply_text(f"❌ Error fetching {msg_id}: {e}")
+                continue
 
             try:
-                m = await context.bot.copy_message(
-                    chat_id=MAIN_CHANNEL,
-                    from_chat_id=BACKUP_CHANNEL,
-                    message_id=msg_id
-                )
+                # check message type and resend clean
+                if msg.text:
+                    cleaned_text = msg.text.replace(REMOVE_TEXT, "").strip()
+                    await context.bot.send_message(MAIN_CHANNEL, cleaned_text)
 
-                # clean text/caption
-                if m.text:
-                    cleaned_text = m.text.replace(REMOVE_TEXT, "").strip()
-                    if cleaned_text != m.text:
-                        await context.bot.edit_message_text(
-                            chat_id=MAIN_CHANNEL,
-                            message_id=m.message_id,
-                            text=cleaned_text
-                        )
-                elif m.caption:
-                    cleaned_caption = m.caption.replace(REMOVE_TEXT, "").strip()
-                    if cleaned_caption != m.caption:
-                        await context.bot.edit_message_caption(
-                            chat_id=MAIN_CHANNEL,
-                            message_id=m.message_id,
-                            caption=cleaned_caption
-                        )
+                elif msg.caption:
+                    cleaned_caption = msg.caption.replace(REMOVE_TEXT, "").strip()
+                    if msg.photo:
+                        await context.bot.send_photo(MAIN_CHANNEL, photo=msg.photo[-1].file_id, caption=cleaned_caption)
+                    elif msg.video:
+                        await context.bot.send_video(MAIN_CHANNEL, video=msg.video.file_id, caption=cleaned_caption)
+                    elif msg.document:
+                        await context.bot.send_document(MAIN_CHANNEL, document=msg.document.file_id, caption=cleaned_caption)
+                    else:
+                        await context.bot.send_message(MAIN_CHANNEL, cleaned_caption)
+
+                else:
+                    # fallback just copy
+                    await context.bot.copy_message(MAIN_CHANNEL, BACKUP_CHANNEL, msg_id)
+
             except Exception as e:
-                await update.message.reply_text(f"❌ Error copying {msg_id}: {e}")
+                await update.message.reply_text(f"❌ Error sending {msg_id}: {e}")
 
         await update.message.reply_text("✅ Done!")
 
