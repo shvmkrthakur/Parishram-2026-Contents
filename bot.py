@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import logging, re
+import logging
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 
@@ -12,19 +12,28 @@ REMOVE_TEXT    = "✨ Powered By : @ParishramZone"
 
 logging.basicConfig(level=logging.INFO)
 
-def clean_text_keep_links(text: str, remove_text: str):
-    """Remove unwanted text + formatting, keep only raw links."""
-    if not text:
-        return text
-    # remove unwanted promo line
-    text = text.replace(remove_text, "").strip()
-    # regex: extract links
-    links = re.findall(r'(https?://\S+|t\.me/\S+)', text)
-    # remove all formatting chars (Telegram entities won’t be used)
-    plain_text = re.sub(r'\*|_|~|`', '', text)  # remove markdown formatting
-    # (optional) keep links inside text, no markup
-    return plain_text
+def clean_text_and_entities(msg, remove_text):
+    """Remove unwanted text, drop formatting but keep links only."""
+    text = msg.text or msg.caption
+    entities = msg.entities or msg.caption_entities
 
+    if not text:
+        return None, None
+
+    # remove unwanted line
+    text = text.replace(remove_text, "").strip()
+
+    safe_entities = []
+    if entities:
+        for e in entities:
+            if e.type in ["url", "text_link"]:  # keep only links
+                # ensure entity is valid in new text length
+                if e.offset + e.length <= len(text):
+                    safe_entities.append(e)
+
+    return text, safe_entities
+
+# /start 1-100
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text("Usage: /start <from>-<to>\nExample: /start 1-100")
@@ -39,7 +48,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         for msg_id in range(start_id, end_id + 1):
             try:
-                # get original msg
+                # fetch original msg
                 msg = await context.bot.forward_message(
                     chat_id=update.effective_chat.id,
                     from_chat_id=BACKUP_CHANNEL,
@@ -47,23 +56,47 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
                 await msg.delete()
 
+                # clean text + entities
+                cleaned_text, safe_entities = clean_text_and_entities(msg, REMOVE_TEXT)
+
                 if msg.text:
-                    cleaned = clean_text_keep_links(msg.text, REMOVE_TEXT)
-                    await context.bot.send_message(MAIN_CHANNEL, text=cleaned)
+                    await context.bot.send_message(
+                        MAIN_CHANNEL,
+                        text=cleaned_text,
+                        entities=safe_entities
+                    )
 
                 elif msg.caption:
-                    cleaned = clean_text_keep_links(msg.caption, REMOVE_TEXT)
                     if msg.photo:
-                        await context.bot.send_photo(MAIN_CHANNEL, msg.photo[-1].file_id, caption=cleaned)
+                        await context.bot.send_photo(
+                            MAIN_CHANNEL,
+                            msg.photo[-1].file_id,
+                            caption=cleaned_text,
+                            caption_entities=safe_entities
+                        )
                     elif msg.video:
-                        await context.bot.send_video(MAIN_CHANNEL, msg.video.file_id, caption=cleaned)
+                        await context.bot.send_video(
+                            MAIN_CHANNEL,
+                            msg.video.file_id,
+                            caption=cleaned_text,
+                            caption_entities=safe_entities
+                        )
                     elif msg.document:
-                        await context.bot.send_document(MAIN_CHANNEL, msg.document.file_id, caption=cleaned)
+                        await context.bot.send_document(
+                            MAIN_CHANNEL,
+                            msg.document.file_id,
+                            caption=cleaned_text,
+                            caption_entities=safe_entities
+                        )
                     else:
-                        await context.bot.send_message(MAIN_CHANNEL, text=cleaned)
+                        await context.bot.send_message(
+                            MAIN_CHANNEL,
+                            text=cleaned_text,
+                            entities=safe_entities
+                        )
 
                 else:
-                    # fallback if no text/caption
+                    # fallback: raw copy if nothing else
                     await context.bot.copy_message(MAIN_CHANNEL, BACKUP_CHANNEL, msg_id)
 
             except Exception as e:
