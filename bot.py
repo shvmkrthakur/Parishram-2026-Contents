@@ -26,43 +26,56 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         for msg_id in range(start_id, end_id + 1):
             try:
-                # fetch the original message
+                # fetch message
                 msg = await context.bot.forward_message(
-                    chat_id=update.effective_chat.id,   # temp forward to user (self)
+                    chat_id=update.effective_chat.id,   # temp forward to user
                     from_chat_id=BACKUP_CHANNEL,
                     message_id=msg_id
                 )
-                await msg.delete()  # delete temp forward
+                await msg.delete()
 
-                # now fetch real message
-                original = await context.bot.get_chat(BACKUP_CHANNEL)
-            except Exception as e:
-                await update.message.reply_text(f"❌ Error fetching {msg_id}: {e}")
-                continue
-
-            try:
-                # check message type and resend clean
+                # ✅ check message type
                 if msg.text:
                     cleaned_text = msg.text.replace(REMOVE_TEXT, "").strip()
-                    await context.bot.send_message(MAIN_CHANNEL, cleaned_text)
+                    await context.bot.send_message(
+                        MAIN_CHANNEL,
+                        text=cleaned_text,
+                        entities=msg.entities  # keep formatting + links
+                    )
 
                 elif msg.caption:
                     cleaned_caption = msg.caption.replace(REMOVE_TEXT, "").strip()
                     if msg.photo:
-                        await context.bot.send_photo(MAIN_CHANNEL, photo=msg.photo[-1].file_id, caption=cleaned_caption)
+                        await context.bot.send_photo(
+                            MAIN_CHANNEL, photo=msg.photo[-1].file_id,
+                            caption=cleaned_caption,
+                            caption_entities=msg.caption_entities  # keep formatting + links
+                        )
                     elif msg.video:
-                        await context.bot.send_video(MAIN_CHANNEL, video=msg.video.file_id, caption=cleaned_caption)
+                        await context.bot.send_video(
+                            MAIN_CHANNEL, video=msg.video.file_id,
+                            caption=cleaned_caption,
+                            caption_entities=msg.caption_entities
+                        )
                     elif msg.document:
-                        await context.bot.send_document(MAIN_CHANNEL, document=msg.document.file_id, caption=cleaned_caption)
+                        await context.bot.send_document(
+                            MAIN_CHANNEL, document=msg.document.file_id,
+                            caption=cleaned_caption,
+                            caption_entities=msg.caption_entities
+                        )
                     else:
-                        await context.bot.send_message(MAIN_CHANNEL, cleaned_caption)
+                        await context.bot.send_message(
+                            MAIN_CHANNEL,
+                            text=cleaned_caption,
+                            entities=msg.caption_entities
+                        )
 
                 else:
-                    # fallback just copy
+                    # fallback normal copy
                     await context.bot.copy_message(MAIN_CHANNEL, BACKUP_CHANNEL, msg_id)
 
             except Exception as e:
-                await update.message.reply_text(f"❌ Error sending {msg_id}: {e}")
+                await update.message.reply_text(f"❌ Error copying {msg_id}: {e}")
 
         await update.message.reply_text("✅ Done!")
 
