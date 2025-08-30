@@ -5,8 +5,8 @@ from telegram.ext import Application, CommandHandler, ContextTypes
 
 # ---------------- CONFIG ----------------
 BOT_TOKEN = "7947639550:AAHEtB3KRztXvgDfXM-r3-mWRCA8Vn-G5_g"
-BACKUP_CHANNEL = "@gdndndm"        # backup channel username
-MAIN_CHANNEL   = -1002371985459    # target channel id (ID रखना ज्यादा safe है)
+BACKUP_CHANNEL = "@gdndndm"        # source channel username
+MAIN_CHANNEL   = -1002371985459    # target channel id
 REMOVE_TEXT    = "✨ Powered By : @ParishramZone"
 # ----------------------------------------
 
@@ -20,7 +20,7 @@ def clean_text_and_entities(msg, remove_text):
     if not text:
         return None, None
 
-    # remove unwanted promo
+    # remove unwanted promo text
     text = text.replace(remove_text, "").strip()
 
     safe_entities = []
@@ -48,38 +48,42 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         for msg_id in range(start_id, end_id + 1):
             try:
-                # fetch message directly
-                msg = await context.bot.get_chat(BACKUP_CHANNEL).get_message(msg_id)
+                # first fetch original msg (forward temp to user)
+                fwd = await context.bot.forward_message(
+                    chat_id=update.effective_chat.id,
+                    from_chat_id=BACKUP_CHANNEL,
+                    message_id=msg_id
+                )
 
                 # clean text + entities
-                cleaned_text, safe_entities = clean_text_and_entities(msg, REMOVE_TEXT)
+                cleaned_text, safe_entities = clean_text_and_entities(fwd, REMOVE_TEXT)
 
-                if msg.text:
+                if fwd.text:
                     await context.bot.send_message(
                         MAIN_CHANNEL,
                         text=cleaned_text,
                         entities=safe_entities
                     )
 
-                elif msg.caption:
-                    if msg.photo:
+                elif fwd.caption:
+                    if fwd.photo:
                         await context.bot.send_photo(
                             MAIN_CHANNEL,
-                            msg.photo[-1].file_id,
+                            fwd.photo[-1].file_id,
                             caption=cleaned_text,
                             caption_entities=safe_entities
                         )
-                    elif msg.video:
+                    elif fwd.video:
                         await context.bot.send_video(
                             MAIN_CHANNEL,
-                            msg.video.file_id,
+                            fwd.video.file_id,
                             caption=cleaned_text,
                             caption_entities=safe_entities
                         )
-                    elif msg.document:
+                    elif fwd.document:
                         await context.bot.send_document(
                             MAIN_CHANNEL,
-                            msg.document.file_id,
+                            fwd.document.file_id,
                             caption=cleaned_text,
                             caption_entities=safe_entities
                         )
@@ -91,8 +95,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         )
 
                 else:
-                    # fallback: raw copy
+                    # fallback copy
                     await context.bot.copy_message(MAIN_CHANNEL, BACKUP_CHANNEL, msg_id)
+
+                # delete temp forwarded message
+                await fwd.delete()
 
             except Exception as e:
                 await update.message.reply_text(f"❌ Error copying {msg_id}: {e}")
