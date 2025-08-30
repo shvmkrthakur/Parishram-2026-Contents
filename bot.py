@@ -5,8 +5,8 @@ from telegram.ext import Application, CommandHandler, ContextTypes
 
 # ---------------- CONFIG ----------------
 BOT_TOKEN = "7947639550:AAHEtB3KRztXvgDfXM-r3-mWRCA8Vn-G5_g"
-BACKUP_CHANNEL = "@gdndndm"      # source channel username OR id
-MAIN_CHANNEL   = -1002371985459  # target channel id
+BACKUP_CHANNEL = "@gdndndm"        # backup channel username
+MAIN_CHANNEL   = -1002371985459    # target channel id (ID रखना ज्यादा safe है)
 REMOVE_TEXT    = "✨ Powered By : @ParishramZone"
 # ----------------------------------------
 
@@ -20,18 +20,18 @@ def clean_text_and_entities(msg, remove_text):
     if not text:
         return None, None
 
-    # remove unwanted line
+    # remove unwanted promo
     text = text.replace(remove_text, "").strip()
 
     safe_entities = []
     if entities:
         for e in entities:
             if e.type in ["url", "text_link"]:  # keep only links
-                # ensure entity is valid in new text length
                 if e.offset + e.length <= len(text):
                     safe_entities.append(e)
 
     return text, safe_entities
+
 
 # /start 1-100
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -48,13 +48,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         for msg_id in range(start_id, end_id + 1):
             try:
-                # fetch original msg
-                msg = await context.bot.forward_message(
-                    chat_id=update.effective_chat.id,
-                    from_chat_id=BACKUP_CHANNEL,
-                    message_id=msg_id
-                )
-                await msg.delete()
+                # fetch message directly
+                msg = await context.bot.get_chat(BACKUP_CHANNEL).get_message(msg_id)
 
                 # clean text + entities
                 cleaned_text, safe_entities = clean_text_and_entities(msg, REMOVE_TEXT)
@@ -96,7 +91,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         )
 
                 else:
-                    # fallback: raw copy if nothing else
+                    # fallback: raw copy
                     await context.bot.copy_message(MAIN_CHANNEL, BACKUP_CHANNEL, msg_id)
 
             except Exception as e:
@@ -107,11 +102,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"Invalid format ❌\nError: {e}")
 
+
 def main():
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     print("Bot is running...")
     app.run_polling()
+
 
 if __name__ == "__main__":
     main()
